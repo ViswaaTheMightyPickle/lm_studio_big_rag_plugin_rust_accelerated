@@ -1,36 +1,45 @@
 /**
- * Native module re-exports
- * 
+ * Native module exports
+ *
  * This module provides high-performance Rust implementations of:
  * - File hashing (SHA-256)
  * - Text chunking
  * - Directory scanning
- * 
- * Falls back to TypeScript implementations if native module is not available.
+ * - Token counting (cl100k_base for nomic-embed-text-v1.5)
+ *
+ * Requires native module to be built. No TypeScript fallbacks.
  */
 
-// Try to load native module, fallback to TS if not available
+// Try to load native module
 let nativeModule: any = null;
 let nativeLoadError: string | null = null;
 
 try {
   // Try different possible paths for the native module
+  // Paths are relative to dist/native/index.js (compiled output)
   const paths = [
-    '../../native/bigrag-native.linux-x64-gnu.node',
-    '../../native/index.node',
-    '@bigrag/native',
+    '../native/bigrag-native.linux-x64-gnu.node',  // From dist/native/
+    '../../native/bigrag-native.linux-x64-gnu.node',  // From dist/
+    './bigrag-native.linux-x64-gnu.node',  // Same directory
   ];
 
   for (const p of paths) {
     try {
       nativeModule = require(p);
+      console.log('[BigRAG Native] Loaded from:', p);
       break;
-    } catch {
-      continue;
+    } catch (e) {
+      // Silently try next path
     }
+  }
+  
+  if (!nativeModule) {
+    throw new Error('Native module not found. Ensure native module is built with: cd native && npm run build');
   }
 } catch (e) {
   nativeLoadError = (e as Error).message;
+  console.error('[BigRAG Native] Failed to load native module:', nativeLoadError);
+  throw e;
 }
 
 // Type definitions (napi-rs converts snake_case to camelCase for JS)
@@ -65,100 +74,50 @@ export interface ScannedFile {
   mtime: number;
 }
 
-// Fallback implementations
-const fallbacks = {
-  hashFile: async (path: string): Promise<string> => {
-    const crypto = await import('crypto');
-    const fs = await import('fs');
-    return new Promise((resolve, reject) => {
-      const hash = crypto.createHash('sha256');
-      const stream = fs.createReadStream(path);
-      stream.on('data', (data) => hash.update(data));
-      stream.on('end', () => resolve(hash.digest('hex')));
-      stream.on('error', reject);
-    });
-  },
+// Tokenizer type definitions
+export interface TokenChunk {
+  text: string;
+  token_count: number;
+  start_token: number;
+  end_token: number;
+}
 
-  chunkText: (
-    text: string,
-    chunkSize: number,
-    overlap: number
-  ): TextChunk[] => {
-    const chunks: TextChunk[] = [];
-    const words = text.split(/\s+/);
-    if (words.length === 0) return chunks;
+export interface TokenCountResult {
+  text: string;
+  token_count: number;
+}
 
-    let startIdx = 0;
-    while (startIdx < words.length) {
-      const endIdx = Math.min(startIdx + chunkSize, words.length);
-      const chunkWords = words.slice(startIdx, endIdx);
-      const chunkText = chunkWords.join(' ');
-      chunks.push({
-        text: chunkText,
-        startIndex: startIdx,
-        endIndex: endIdx,
-        tokenEstimate: Math.ceil(chunkText.length / 4),
-      });
-      startIdx += Math.max(1, chunkSize - overlap);
-      if (endIdx >= words.length) break;
-    }
-    return chunks;
-  },
+export interface TokenStats {
+  token_count: number;
+  char_count: number;
+  tokens_per_char: number;
+}
 
-  scanDirectory: async (root: string): Promise<ScannedFile[]> => {
-    const fs = await import('fs');
-    const path = await import('path');
-    const files: ScannedFile[] = [];
+// Export all functions from native module (no fallbacks)
+export const hashFile = nativeModule.hashFile;
+export const hashFilesParallel = nativeModule.hashFilesParallel;
+export const hashData = nativeModule.hashData;
 
-    const supportedExtensions = new Set([
-      '.txt', '.md', '.markdown', '.html', '.htm', '.pdf', '.epub',
-      '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp',
-    ]);
+export const chunkText = nativeModule.chunkText;
+export const chunkTextFast = nativeModule.chunkTextFast;
+export const chunkTextsParallel = nativeModule.chunkTextsParallel;
+export const chunkTextsBatch = nativeModule.chunkTextsBatch;
+export const estimateTokens = nativeModule.estimateTokens;
+export const estimateTokensBatch = nativeModule.estimateTokensBatch;
 
-    async function walk(dir: string): Promise<void> {
-      const entries = await fs.promises.readdir(dir, { withFileTypes: true });
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          await walk(fullPath);
-        } else if (entry.isFile()) {
-          const ext = path.extname(entry.name).toLowerCase();
-          if (supportedExtensions.has(ext)) {
-            const stats = await fs.promises.stat(fullPath);
-            files.push({
-              path: fullPath,
-              name: entry.name,
-              extension: ext,
-              size: stats.size,
-              mtime: stats.mtimeMs,
-            });
-          }
-        }
-      }
-    }
+export const scanDirectory = nativeModule.scanDirectory;
+export const isSupportedExtension = nativeModule.isSupportedExtension;
+export const getSupportedExtensions = nativeModule.getSupportedExtensions;
+export const DirectoryScanner = nativeModule.DirectoryScanner;
 
-    await walk(root);
-    return files;
-  },
-};
-
-// Export functions with native/TS fallback
-export const hashFile = nativeModule?.hashFile || fallbacks.hashFile;
-export const hashFilesParallel = nativeModule?.hashFilesParallel;
-export const hashData = nativeModule?.hashData;
-
-// Optimized chunking - use native when available
-export const chunkText = nativeModule?.chunkText || fallbacks.chunkText;
-export const chunkTextFast = nativeModule?.chunkTextFast;
-export const chunkTextsParallel = nativeModule?.chunkTextsParallel;
-export const chunkTextsBatch = nativeModule?.chunkTextsBatch;
-export const estimateTokens = nativeModule?.estimateTokens;
-export const estimateTokensBatch = nativeModule?.estimateTokensBatch;
-
-export const scanDirectory = nativeModule?.scanDirectory || fallbacks.scanDirectory;
-export const isSupportedExtension = nativeModule?.isSupportedExtension || (() => true);
-export const getSupportedExtensions = nativeModule?.getSupportedExtensions;
-export const DirectoryScanner = nativeModule?.DirectoryScanner;
+// Tokenizer functions (Rust native only, no fallbacks)
+export const countTokens = nativeModule.countTokens;
+export const countTokensBatch = nativeModule.countTokensBatch;
+export const validateTokenLimit = nativeModule.validateTokenLimit;
+export const chunkByTokens = nativeModule.chunkByTokens;
+export const chunkTextsByTokens = nativeModule.chunkTextsByTokens;
+export const getTokenStats = nativeModule.getTokenStats;
+export const filterByTokenLimit = nativeModule.filterByTokenLimit;
 
 // Utility functions
 export function isNativeAvailable(): boolean {

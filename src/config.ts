@@ -152,5 +152,31 @@ export const configSchematics = createConfigSchematics()
     },
     DEFAULT_PROMPT_TEMPLATE,
   )
+  .field(
+    "embeddingParallelization.batchSize",
+    "numeric",
+    {
+      int: true,
+      min: 10,
+      max: 500,
+      displayName: "Embedding Batch Size",
+      subtitle: "Number of chunks per embedding API call. Default: 250 chunks per model. Larger = more efficient but uses more memory.",
+      slider: { min: 10, max: 500, step: 10 },
+    },
+    250,
+  )
+  .field(
+    "embeddingParallelization.concurrency",
+    "numeric",
+    {
+      int: true,
+      min: 1,
+      max: 50,
+      displayName: "Embedding Concurrency",
+      subtitle: "Number of simultaneous embedding requests. Default: 20. Higher = faster but more network/memory pressure.",
+      slider: { min: 1, max: 50, step: 1 },
+    },
+    20,
+  )
   .build();
 
