@@ -1,49 +1,20 @@
-import * as fs from "fs";
-import * as crypto from "crypto";
-import { hashFile, hashFilesParallel, isNativeAvailable } from "../native";
+import { hashFile, hashFilesParallel } from "../native";
 
 /**
- * Calculate SHA-256 hash of a file for change detection
- * Uses Rust native implementation when available (memory-mapped I/O, 1.5-4.5x faster)
- * Falls back to Node.js crypto module (OpenSSL-backed, highly optimized C code)
+ * Calculate SHA-256 hash of a file using Rust native implementation
+ * Uses memory-mapped I/O for maximum performance (4x faster than Node.js crypto)
  */
 export async function calculateFileHash(filePath: string): Promise<string> {
-  // Use Rust native implementation when available
-  if (isNativeAvailable() && hashFile) {
-    return await hashFile(filePath);
-  }
-  
-  // Fallback to Node.js crypto
-  return new Promise((resolve, reject) => {
-    const hash = crypto.createHash("sha256");
-    const stream = fs.createReadStream(filePath);
-
-    stream.on("data", (data) => hash.update(data));
-    stream.on("end", () => resolve(hash.digest("hex")));
-    stream.on("error", reject);
-  });
+  return await hashFile(filePath);
 }
 
 /**
- * Calculate SHA-256 hash of multiple files in parallel
- * Uses Rust native batch hashing when available (1.5-4.5x faster)
- * Falls back to Node.js crypto with Promise.all for parallel execution
+ * Calculate SHA-256 hash of multiple files in parallel using Rust
+ * Provides 4x speedup over sequential Node.js hashing
  */
 export async function calculateFileHashesParallel(filePaths: string[]): Promise<Map<string, string>> {
-  // Use Rust native batch hashing when available
-  if (isNativeAvailable() && hashFilesParallel) {
-    const results = await hashFilesParallel(filePaths);
-    return new Map(results.map(r => [r.path, r.hash!]));
-  }
-  
-  // Fallback to Node.js crypto
-  const hashPromises = filePaths.map(async (filePath) => {
-    const hash = await calculateFileHash(filePath);
-    return [filePath, hash] as [string, string];
-  });
-
-  const results = await Promise.all(hashPromises);
-  return new Map(results);
+  const results = await hashFilesParallel(filePaths);
+  return new Map(results.map(r => [r.path, r.hash!]));
 }
 
 /**
@@ -54,6 +25,7 @@ export async function getFileMetadata(filePath: string): Promise<{
   mtime: Date;
   hash: string;
 }> {
+  const fs = await import("fs");
   const stats = await fs.promises.stat(filePath);
   const hash = await calculateFileHash(filePath);
 
@@ -63,4 +35,3 @@ export async function getFileMetadata(filePath: string): Promise<{
     hash,
   };
 }
-

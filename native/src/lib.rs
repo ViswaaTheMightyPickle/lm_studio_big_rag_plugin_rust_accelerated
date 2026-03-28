@@ -9,6 +9,7 @@ pub mod text_parser;
 pub mod vector_ops;
 pub mod html_parser;
 pub mod parser;
+pub mod indexer;
 
 pub use hashing::*;
 pub use chunking::*;
@@ -21,3 +22,4 @@ pub use text_parser::*;
 pub use vector_ops::*;
 pub use html_parser::*;
 pub use parser::*;
+pub use indexer::*;

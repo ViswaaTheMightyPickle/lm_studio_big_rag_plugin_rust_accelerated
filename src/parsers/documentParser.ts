@@ -1,17 +1,6 @@
 import * as path from "path";
-import { parseHTML } from "./htmlParser";
-import { parsePDF, type PdfFailureReason } from "./pdfParser";
-import { parseEPUB } from "./epubParser";
-import { parseImage } from "./imageParser";
-import { parseText } from "./textParser";
 import { type LMStudioClient } from "@lmstudio/sdk";
-import {
-  IMAGE_EXTENSION_SET,
-  isHtmlExtension,
-  isMarkdownExtension,
-  isPlainTextExtension,
-  isTextualExtension,
-} from "../utils/supportedExtensions";
+import { parseDocument as nativeParseDocument, isSupportedExtension } from "../native";
 
 export interface ParsedDocument {
   text: string;
@@ -26,7 +15,14 @@ export interface ParsedDocument {
 export type ParseFailureReason =
   | "unsupported-extension"
   | "pdf.missing-client"
-  | PdfFailureReason
+  | "pdf.lmstudio-error"
+  | "pdf.lmstudio-empty"
+  | "pdf.pdfparse-error"
+  | "pdf.pdfparse-empty"
+  | "pdf.ocr-disabled"
+  | "pdf.ocr-error"
+  | "pdf.ocr-render-error"
+  | "pdf.ocr-empty"
   | "epub.empty"
   | "html.empty"
   | "html.error"
@@ -42,112 +38,54 @@ export type DocumentParseResult =
   | { success: false; reason: ParseFailureReason; details?: string };
 
 /**
- * Parse a document file based on its extension
+ * Parse a document file using Rust native parser
+ * All parsing is done in Rust for maximum performance
  */
 export async function parseDocument(
   filePath: string,
   enableOCR: boolean = false,
-  client?: LMStudioClient,
+  _client?: LMStudioClient,  // Kept for API compatibility
 ): Promise<DocumentParseResult> {
   const ext = path.extname(filePath).toLowerCase();
   const fileName = path.basename(filePath);
 
-  const buildSuccess = (text: string): DocumentParseResult => ({
-    success: true,
-    document: {
-      text,
-      metadata: {
-        filePath,
-        fileName,
-        extension: ext,
-        parsedAt: new Date(),
-      },
-    },
-  });
+  // Check if extension is supported
+  if (!isSupportedExtension(filePath)) {
+    return { 
+      success: false, 
+      reason: "unsupported-extension",
+      details: ext
+    };
+  }
 
   try {
-    if (isHtmlExtension(ext)) {
-      try {
-        const text = cleanAndValidate(
-          await parseHTML(filePath),
-          "html.empty",
-          `${fileName} html`,
-        );
-        return text.success ? buildSuccess(text.value) : text;
-      } catch (error) {
-        console.error(`[Parser][HTML] Error parsing ${filePath}:`, error);
-        return {
-          success: false,
-          reason: "html.error",
-          details: error instanceof Error ? error.message : String(error),
-        };
-      }
+    // Call Rust native parser
+    const result = await nativeParseDocument(filePath, enableOCR);
+
+    if (result.success && result.text) {
+      return {
+        success: true,
+        document: {
+          text: result.text,
+          metadata: {
+            filePath: result.filePath,
+            fileName: result.fileName,
+            extension: result.extension,
+            parsedAt: new Date(),
+          },
+        },
+      };
     }
 
-    if (ext === ".pdf") {
-      if (!client) {
-        console.warn(`[Parser] No LM Studio client available for PDF parsing: ${fileName}`);
-        return { success: false, reason: "pdf.missing-client" };
-      }
-      const pdfResult = await parsePDF(filePath, client, enableOCR);
-      if (pdfResult.success) {
-        return buildSuccess(pdfResult.text);
-      }
-      return pdfResult;
-    }
-
-    if (ext === ".epub") {
-      const text = await parseEPUB(filePath);
-      const cleaned = cleanAndValidate(text, "epub.empty", fileName);
-      return cleaned.success ? buildSuccess(cleaned.value) : cleaned;
-    }
-
-    if (isTextualExtension(ext)) {
-      try {
-        const text = await parseText(filePath, {
-          stripMarkdown: isMarkdownExtension(ext),
-          preserveLineBreaks: isPlainTextExtension(ext),
-        });
-        const cleaned = cleanAndValidate(text, "text.empty", fileName);
-        return cleaned.success ? buildSuccess(cleaned.value) : cleaned;
-      } catch (error) {
-        console.error(`[Parser][Text] Error parsing ${filePath}:`, error);
-        return {
-          success: false,
-          reason: "text.error",
-          details: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }
-
-    if (IMAGE_EXTENSION_SET.has(ext)) {
-      if (!enableOCR) {
-        console.log(`Skipping image file ${filePath} (OCR disabled)`);
-        return { success: false, reason: "image.ocr-disabled" };
-      }
-      try {
-        const text = await parseImage(filePath);
-        const cleaned = cleanAndValidate(text, "image.empty", fileName);
-        return cleaned.success ? buildSuccess(cleaned.value) : cleaned;
-      } catch (error) {
-        console.error(`[Parser][Image] Error parsing ${filePath}:`, error);
-        return {
-          success: false,
-          reason: "image.error",
-          details: error instanceof Error ? error.message : String(error),
-        };
-      }
-    }
-
-    if (ext === ".rar") {
-      console.log(`RAR files not yet supported: ${filePath}`);
-      return { success: false, reason: "unsupported-extension", details: ".rar" };
-    }
-
-    console.log(`Unsupported file type: ${filePath}`);
-    return { success: false, reason: "unsupported-extension", details: ext };
+    // Map Rust error to TypeScript reason
+    const reason = mapErrorToReason(result.error, ext, enableOCR);
+    return {
+      success: false,
+      reason,
+      details: result.error,
+    };
   } catch (error) {
-    console.error(`Error parsing document ${filePath}:`, error);
+    console.error(`[Parser] Error parsing ${filePath}:`, error);
     return {
       success: false,
       reason: "parser.unexpected-error",
@@ -156,23 +94,42 @@ export async function parseDocument(
   }
 }
 
-type CleanResult =
-  | { success: true; value: string }
-  | { success: false; reason: ParseFailureReason; details?: string };
+/**
+ * Map Rust error message to TypeScript ParseFailureReason
+ */
+function mapErrorToReason(
+  error: string | undefined,
+  ext: string,
+  enableOCR: boolean,
+): ParseFailureReason {
+  if (!error) return "parser.unexpected-error";
 
-function cleanAndValidate(
-  text: string,
-  emptyReason: ParseFailureReason,
-  detailsContext?: string,
-): CleanResult {
-  const cleaned = text?.trim() ?? "";
-  if (cleaned.length === 0) {
-    return {
-      success: false,
-      reason: emptyReason,
-      details: detailsContext ? `${detailsContext} trimmed to zero length` : undefined,
-    };
+  const err = error.toLowerCase();
+
+  // OCR-related errors
+  if (err.includes("ocr is disabled")) return "image.ocr-disabled";
+  if (err.includes("ocr")) return "image.error";
+
+  // File type specific errors
+  if (ext === ".pdf") {
+    if (err.includes("no text")) return "pdf.pdfparse-empty";
+    return "pdf.pdfparse-error";
   }
-  return { success: true, value: cleaned };
-}
 
+  if (ext === ".epub") {
+    if (err.includes("no text") || err.includes("empty")) return "epub.empty";
+    return "text.error";
+  }
+
+  if (ext === ".html" || ext === ".htm") {
+    if (err.includes("no text")) return "html.empty";
+    return "html.error";
+  }
+
+  // Default
+  if (err.includes("no text") || err.includes("empty")) {
+    return "text.empty";
+  }
+
+  return "text.error";
+}
