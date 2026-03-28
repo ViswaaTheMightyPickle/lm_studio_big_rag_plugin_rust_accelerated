@@ -50,15 +50,22 @@ ndarray = "0.15"
 # Async runtime for batch operations
 tokio = { version = "1.0", features = ["full"] }
 
-# Note: LanceDB deferred - use vectra (TypeScript) for vector store
-# LanceDB has arrow/chrono version conflicts that are complex to resolve
+# HTTP client for LM Studio API (indexer)
+reqwest = { version = "0.11", features = ["json"] }
+futures = "0.3"
+
+# Note: LanceDB deferred - requires protobuf-compiler
+# Use vectra (TypeScript) for vector store for now
 # lancedb = "0.4"
 # arrow-array = "48"
 # arrow-schema = "48"
+# arrow-buffer = "48"
+# arrow-data = "48"
+# arrow-arith = "48"
 
 [patch.crates-io]
 # Force chrono version to avoid arrow conflict
-# chrono = { version = "0.4.31", git = "https://github.com/chronotope/chrono", tag = "v0.4.31" }
+chrono = { version = "0.4.31", git = "https://github.com/chronotope/chrono", tag = "v0.4.31" }
 
 [build-dependencies]
 napi-build = "2.1"

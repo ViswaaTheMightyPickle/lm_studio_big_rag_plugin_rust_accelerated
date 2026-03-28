@@ -1,17 +1,19 @@
-//! Core indexing pipeline
-//! Orchestrates the document indexing workflow:
-//! 1. Scan directory
-//! 2. Parse documents  
-//! 3. Chunk texts
-//! Note: Embedding and vector store indexing handled by TypeScript
+//! Complete indexing pipeline
+//! Provides parse and chunk functionality with statistics
 
 use napi::bindgen_prelude::*;
 use napi::Result as NapiResult;
 use napi_derive::napi;
 use rayon::prelude::*;
-use std::path::Path;
 
-use crate::chunking::{chunk_texts_batch, BatchChunkResult, TextChunk};
+/// Indexing statistics
+#[napi(object)]
+pub struct IndexingStats {
+    pub total_files: u32,
+    pub total_chunks: u32,
+    pub total_tokens: u32,
+    pub avg_chunks_per_file: f64,
+}
 
 /// Parsed document with chunks
 #[napi(object)]
@@ -20,7 +22,7 @@ pub struct ParsedDocumentWithChunks {
     pub file_name: String,
     pub extension: String,
     pub text: String,
-    pub chunks: Vec<TextChunk>,
+    pub chunks: Vec<crate::chunking::TextChunk>,
 }
 
 /// Parse and chunk a single document
@@ -47,11 +49,11 @@ pub fn parse_and_chunk_document(
     // Chunk the text
     let texts = vec![parse_result.text.clone()];
     let chunk_results = crate::chunking::chunk_texts_batch(texts, chunk_size, chunk_overlap)?;
-
-    // Filter chunks for file index 0 and convert
-    let chunks: Vec<TextChunk> = chunk_results.into_iter()
+    
+    // Filter chunks for file index 0
+    let chunks: Vec<crate::chunking::TextChunk> = chunk_results.into_iter()
         .filter(|c| c.file_index == 0)
-        .map(|c| TextChunk {
+        .map(|c| crate::chunking::TextChunk {
             text: c.text,
             start_index: c.start_index,
             end_index: c.end_index,
@@ -96,15 +98,6 @@ pub fn parse_and_chunk_documents_batch(
     Ok(results)
 }
 
-/// Indexing statistics
-#[napi(object)]
-pub struct IndexingStats {
-    pub total_files: u32,
-    pub total_chunks: u32,
-    pub total_tokens: u32,
-    pub avg_chunks_per_file: f64,
-}
-
 /// Calculate indexing statistics for a set of files
 #[napi]
 pub fn calculate_indexing_stats(
@@ -134,4 +127,19 @@ pub fn calculate_indexing_stats(
         total_tokens,
         avg_chunks_per_file: avg_chunks,
     })
+}
+
+/// Estimate token count for text (rough approximation)
+#[napi]
+pub fn estimate_tokens(text: String) -> u32 {
+    // Rough estimate: 1 token ≈ 4 characters for English
+    ((text.len() + 3) / 4) as u32
+}
+
+/// Batch estimate token counts
+#[napi]
+pub fn estimate_tokens_batch(texts: Vec<String>) -> Vec<u32> {
+    texts.par_iter()
+        .map(|text| ((text.len() + 3) / 4) as u32)
+        .collect()
 }
