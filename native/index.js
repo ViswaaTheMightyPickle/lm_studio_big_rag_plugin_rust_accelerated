@@ -7,12 +7,14 @@
  * - Text chunking
  * - Directory scanning
  * - Token counting (cl100k_base for nomic-embed-text-v1.5)
+ * - PDF parsing
+ * - EPUB parsing
+ * - Image OCR
+ * - Text/markdown parsing
+ * - Vector operations
  */
 
 Object.defineProperty(exports, "__esModule", { value: true });
-
-const { createRequire } = require('module');
-const require = createRequire(__filename);
 
 // Load the native module
 let nativeModule;
@@ -108,6 +110,8 @@ exports.hashData = nativeModule?.hashData;
 
 exports.chunkText = nativeModule?.chunkText || fallbackImplementations.chunkText;
 exports.chunkTextsParallel = nativeModule?.chunkTextsParallel;
+exports.chunkTextsBatch = nativeModule?.chunkTextsBatch;
+exports.chunkTextFast = nativeModule?.chunkTextFast;
 exports.estimateTokens = nativeModule?.estimateTokens;
 exports.estimateTokensBatch = nativeModule?.estimateTokensBatch;
 
@@ -124,6 +128,53 @@ exports.chunkByTokens = nativeModule?.chunkByTokens;
 exports.chunkTextsByTokens = nativeModule?.chunkTextsByTokens;
 exports.getTokenStats = nativeModule?.getTokenStats;
 exports.filterByTokenLimit = nativeModule?.filterByTokenLimit;
+
+// PDF parser functions (Rust only)
+exports.extractPdfText = nativeModule?.extractPdfText;
+exports.ocrPdfPages = nativeModule?.ocrPdfPages;
+exports.ocrImagesBatch = nativeModule?.ocrImagesBatch;
+
+// EPUB parser functions (Rust only)
+exports.extractEpubText = nativeModule?.extractEpubText;
+exports.extractEpubTextSelective = nativeModule?.extractEpubTextSelective;
+exports.getEpubMetadata = nativeModule?.getEpubMetadata;
+
+// OCR functions (Rust only)
+exports.ocrImage = nativeModule?.ocrImage;
+exports.ocrImagesBatch = nativeModule?.ocrImagesBatch;
+exports.getOcrLanguages = nativeModule?.getOcrLanguages;
+exports.getImageOcrStats = nativeModule?.getImageOcrStats;
+
+// Text parser functions (Rust only)
+exports.parseTextFile = nativeModule?.parseTextFile;
+exports.parseTextFilesBatch = nativeModule?.parseTextFilesBatch;
+exports.stripMarkdown = nativeModule?.stripMarkdown;
+exports.stripMarkdownBatch = nativeModule?.stripMarkdownBatch;
+exports.normalizeText = nativeModule?.normalizeText;
+exports.getTextStats = nativeModule?.getTextStats;
+exports.getTextStatsBatch = nativeModule?.getTextStatsBatch;
+
+// Vector operations (Rust only)
+exports.computeCosineSimilarities = nativeModule?.computeCosineSimilarities;
+exports.findTopKSimilar = nativeModule?.findTopKSimilar;
+exports.computeSimilarityMatrix = nativeModule?.computeSimilarityMatrix;
+exports.normalizeVectors = nativeModule?.normalizeVectors;
+exports.computeEuclideanDistances = nativeModule?.computeEuclideanDistances;
+exports.dotProduct = nativeModule?.dotProduct;
+exports.vectorNorm = nativeModule?.vectorNorm;
+exports.getVectorStats = nativeModule?.getVectorStats;
+exports.getVectorStatsBatch = nativeModule?.getVectorStatsBatch;
+
+// HTML parser functions (Rust only)
+exports.parseHtml = nativeModule?.parseHtml;
+exports.parseHtmlString = nativeModule?.parseHtmlString;
+exports.parseHtmlWithSelectors = nativeModule?.parseHtmlWithSelectors;
+
+// Document parser router (Rust only)
+exports.parseDocument = nativeModule?.parseDocument;
+exports.parseDocumentsBatch = nativeModule?.parseDocumentsBatch;
+exports.isSupportedExtension = nativeModule?.isSupportedExtension;
+exports.getSupportedExtensions = nativeModule?.getSupportedExtensions;
 
 // Check if native module is available
 function isNativeAvailable() {

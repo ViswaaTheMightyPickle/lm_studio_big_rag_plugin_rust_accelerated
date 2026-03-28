@@ -2,6 +2,7 @@
   "name": "@bigrag/native",
   "version": "1.0.0",
   "description": "Native Rust performance module for BigRAG plugin",
+  "type": "commonjs",
   "main": "index.js",
   "types": "index.d.ts",
   "scripts": {

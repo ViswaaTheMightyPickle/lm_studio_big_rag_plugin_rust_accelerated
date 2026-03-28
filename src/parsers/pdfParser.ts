@@ -3,6 +3,7 @@ import * as fs from "fs";
 import pdfParse from "pdf-parse";
 import { createWorker } from "tesseract.js";
 import { PNG } from "pngjs";
+import { extractPdfText as nativeExtractPdfText, isNativeAvailable } from "../native";
 
 const MIN_TEXT_LENGTH = 50;
 const OCR_MAX_PAGES = 50;
@@ -520,6 +521,28 @@ export async function parsePDF(
   enableOCR: boolean,
 ): Promise<PdfParserResult> {
   const fileName = filePath.split("/").pop() || filePath;
+
+  // 0) Try Rust native parser first (fastest, parallel page processing)
+  if (isNativeAvailable() && nativeExtractPdfText) {
+    try {
+      const rustResult = await nativeExtractPdfText(filePath);
+      
+      if (rustResult.success && rustResult.text && rustResult.text.length >= MIN_TEXT_LENGTH) {
+        console.log(`[PDF Parser] (Rust) Successfully extracted ${rustResult.text.length} chars from ${fileName}`);
+        return {
+          success: true,
+          text: rustResult.text,
+          stage: "lopdf",
+        };
+      }
+      
+      // Rust parser returned insufficient text, fall through to other methods
+      console.log(`[PDF Parser] (Rust) Extracted insufficient text from ${fileName} (${rustResult.text?.length || 0} chars), trying other methods`);
+    } catch (rustError) {
+      console.warn(`[PDF Parser] (Rust) Error for ${fileName}:`, rustError);
+      // Fall through to other methods
+    }
+  }
 
   // 1) FAST: Local pdf-parse first (no WebSocket overhead)
   const pdfParseResult = await tryPdfParse(filePath);

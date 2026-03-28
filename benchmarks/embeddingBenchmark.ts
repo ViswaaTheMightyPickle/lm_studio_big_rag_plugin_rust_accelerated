@@ -16,15 +16,15 @@ import * as path from "path";
 
 // Benchmark configuration
 const BENCHMARK_CONFIGS = [
-  { name: "Single Model, Batch 100, Concurrency 5", modelCount: 1, batchSize: 100, concurrency: 5 },
-  { name: "Single Model, Batch 250, Concurrency 10", modelCount: 1, batchSize: 250, concurrency: 10 },
-  { name: "Single Model, Batch 500, Concurrency 20", modelCount: 1, batchSize: 500, concurrency: 20 },
-  { name: "4 Models, Batch 100, Concurrency 5", modelCount: 4, batchSize: 100, concurrency: 5 },
-  { name: "4 Models, Batch 250, Concurrency 10", modelCount: 4, batchSize: 250, concurrency: 10 },
-  { name: "4 Models, Batch 500, Concurrency 20", modelCount: 4, batchSize: 500, concurrency: 20 },
+  { name: "Single Model, Batch 100, Concurrency 3", modelCount: 1, batchSize: 100, concurrency: 3 },
+  { name: "Single Model, Batch 250, Concurrency 5", modelCount: 1, batchSize: 250, concurrency: 5 },
+  { name: "Single Model, Batch 500, Concurrency 10", modelCount: 1, batchSize: 500, concurrency: 10 },
+  { name: "2 Models, Batch 100, Concurrency 3", modelCount: 2, batchSize: 100, concurrency: 3 },
+  { name: "2 Models, Batch 250, Concurrency 5", modelCount: 2, batchSize: 250, concurrency: 5 },
+  { name: "2 Models, Batch 500, Concurrency 10", modelCount: 2, batchSize: 500, concurrency: 10 },
 ];
 
-const TEST_CHUNK_COUNT = 1000;
+const TEST_CHUNK_COUNT = 500;
 const EMBEDDING_MODEL_ID = "nomic-ai/nomic-embed-text-v1.5";
 
 interface BenchmarkResult {
@@ -114,21 +114,27 @@ async function runBenchmark(
   console.log(`\n${"=".repeat(60)}`);
   console.log(`Testing: ${config.name}`);
   console.log(`${"=".repeat(60)}`);
-  
-  const startTime = Date.now();
+
+  let startTime = 0;
   
   try {
-    // Load models
+    // Load models (NOT counted in benchmark time)
     const models = await loadModels(client, config.modelCount);
     console.log(`  Using ${models.length} model(s)`);
-    
+
     // Create batches
     const batches: string[][] = [];
     for (let i = 0; i < chunks.length; i += config.batchSize) {
       batches.push(chunks.slice(i, i + config.batchSize));
     }
-    
+
     console.log(`  Created ${batches.length} batches of ${config.batchSize} chunks`);
+
+    // Wait a moment for models to be ready
+    await new Promise(r => setTimeout(r, 500));
+
+    // START TIMING (after models are loaded)
+    startTime = Date.now();
     
     // Process batches with concurrency limit
     let completedBatches = 0;
@@ -162,7 +168,7 @@ async function runBenchmark(
         completedBatches++;
         inFlight.delete(batchIdx);
         
-        if (completedBatches % 10 === 0) {
+        if (completedBatches % 5 === 0 || completedBatches === batches.length) {
           console.log(`  Progress: ${completedBatches}/${batches.length} batches (${Math.round(completedBatches / batches.length * 100)}%)`);
         }
       });
@@ -171,6 +177,7 @@ async function runBenchmark(
     // Wait for all batches to complete
     await Promise.all(inFlight.values());
     
+    // END TIMING
     const totalTimeMs = Date.now() - startTime;
     const chunksPerSecond = Math.round((chunks.length / totalTimeMs) * 1000);
     
@@ -213,13 +220,13 @@ async function unloadModels(client: LMStudioClient) {
   const loadedModels = await client.embedding.listLoaded();
   
   for (const model of loadedModels) {
-    const info = await model.getInfo();
-    if (info.modelKey?.includes("benchmark-instance")) {
+    const modelKey = (model as any).modelKey || "unknown";
+    if (modelKey?.includes("benchmark-instance")) {
       try {
         await model.unload();
-        console.log(`  Unloaded: ${info.modelKey}`);
+        console.log(`  Unloaded: ${modelKey}`);
       } catch (e) {
-        console.warn(`  Failed to unload ${info.modelKey}: ${e}`);
+        console.warn(`  Failed to unload ${modelKey}: ${e}`);
       }
     }
   }

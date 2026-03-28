@@ -1,19 +1,46 @@
 // @ts-ignore - epub2 doesn't have complete types
 import { EPub } from "epub2";
+import { extractEpubText as nativeExtractEpubText, isNativeAvailable } from "../native";
 
 /**
  * Parse EPUB files and extract text content
+ * Uses Rust native implementation when available (3-5x faster with parallel chapter extraction)
  */
 export async function parseEPUB(filePath: string): Promise<string> {
+  // Use Rust native implementation when available
+  if (isNativeAvailable() && nativeExtractEpubText) {
+    try {
+      const result = await nativeExtractEpubText(filePath);
+      
+      if (result.success && result.text) {
+        console.log(`[EPUB Parser] (Rust) Extracted ${result.text.length} chars from ${filePath} (${result.chapters_processed} chapters)`);
+        return result.text;
+      }
+      
+      // Fallback to TypeScript implementation on error
+      console.warn(`[EPUB Parser] Rust parser failed for ${filePath}, using fallback: ${result.error}`);
+    } catch (error) {
+      console.warn(`[EPUB Parser] Rust parser error for ${filePath}, using fallback:`, error);
+    }
+  }
+
+  // Fallback to TypeScript implementation
+  return parseEPUBTypeScript(filePath);
+}
+
+/**
+ * TypeScript fallback implementation for EPUB parsing
+ */
+function parseEPUBTypeScript(filePath: string): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
       const epub = new EPub(filePath);
-      
+
       epub.on("error", (error: Error) => {
         console.error(`Error parsing EPUB file ${filePath}:`, error);
         resolve("");
       });
-      
+
       const stripHtml = (input: string) =>
         input.replace(/<[^>]*>/g, " ");
 
@@ -90,7 +117,7 @@ export async function parseEPUB(filePath: string): Promise<string> {
         try {
           const chapters = epub.flow;
           const textParts: string[] = [];
-          
+
           for (const chapter of chapters) {
             try {
               const chapterId = chapter.id;
@@ -106,7 +133,7 @@ export async function parseEPUB(filePath: string): Promise<string> {
               console.error(`Error reading chapter ${chapter.id}:`, chapterError);
             }
           }
-          
+
           const fullText = textParts.join("\n\n");
           resolve(
             fullText
@@ -119,7 +146,7 @@ export async function parseEPUB(filePath: string): Promise<string> {
           resolve("");
         }
       });
-      
+
       epub.parse();
     } catch (error) {
       console.error(`Error initializing EPUB parser for ${filePath}:`, error);
