@@ -49,8 +49,8 @@ export async function runIndexingJob({
   forceReindex = false,
   vectorStore: existingVectorStore,
   onProgress,
-  embeddingBatchSize = 100,
-  embeddingConcurrency = 5,
+  embeddingBatchSize = 50,       // Smaller batches = faster completion, less timeout risk
+  embeddingConcurrency = 10,     // More parallel requests = better throughput
   embeddingModelId = "nomic-ai/nomic-embed-text-v1.5-GGUF",
 }: RunIndexingParams): Promise<RunIndexingResult> {
   const vectorStore = existingVectorStore ?? new VectorStore(vectorStoreDir);

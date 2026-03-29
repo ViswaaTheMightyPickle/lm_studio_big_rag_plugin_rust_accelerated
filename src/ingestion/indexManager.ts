@@ -447,8 +447,9 @@ export class IndexManager {
               for (let retry = 0; retry < MAX_RETRIES; retry++) {
                 try {
                   const embedPromise = model.embed(batch);
+                  // Increased timeout to 600s (10 minutes) for large batches over unstable connections
                   const timeoutPromise = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error(`Embedding timeout after 120s`)), 120000)
+                    setTimeout(() => reject(new Error(`Embedding timeout after 600s`)), 600000)
                   );
 
                   const result = await Promise.race([embedPromise, timeoutPromise]);
@@ -458,7 +459,12 @@ export class IndexManager {
                   console.error(`[Embedding] Batch ${batchNumber}/${totalBatches} failed:`, lastError.message);
                   if (retry < MAX_RETRIES - 1) {
                     console.log(`  Retry ${retry + 1}/${MAX_RETRIES}...`);
-                    await new Promise(r => setTimeout(r, 1000 * (retry + 1)));
+                    // Exponential backoff with jitter (prevents thundering herd)
+                    const baseDelay = 1000;
+                    const maxDelay = 30000;
+                    const jitter = Math.random() * 1000;
+                    const delay = Math.min(baseDelay * Math.pow(2, retry) + jitter, maxDelay);
+                    await new Promise(r => setTimeout(r, delay));
                   }
                 }
               }
