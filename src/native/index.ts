@@ -119,6 +119,49 @@ export const chunkTextsByTokens = nativeModule.chunkTextsByTokens;
 export const getTokenStats = nativeModule.getTokenStats;
 export const filterByTokenLimit = nativeModule.filterByTokenLimit;
 
+// Parser functions (Rust native only)
+export const parseDocument = nativeModule.parseDocument;
+export const parseDocumentsBatch = nativeModule.parseDocumentsBatch;
+export const parseTextFile = nativeModule.parseTextFile;
+export const parseTextFilesBatch = nativeModule.parseTextFilesBatch;
+export const stripMarkdown = nativeModule.stripMarkdown;
+export const stripMarkdownBatch = nativeModule.stripMarkdownBatch;
+export const normalizeText = nativeModule.normalizeText;
+export const getTextStats = nativeModule.getTextStats;
+export const getTextStatsBatch = nativeModule.getTextStatsBatch;
+
+export const parseHtml = nativeModule.parseHtml;
+export const parseHtmlString = nativeModule.parseHtmlString;
+export const parseHtmlWithSelectors = nativeModule.parseHtmlWithSelectors;
+
+export const extractPdfText = nativeModule.extractPdfText;
+export const ocrPdfPages = nativeModule.ocrPdfPages;
+
+export const extractEpubText = nativeModule.extractEpubText;
+export const extractEpubTextSelective = nativeModule.extractEpubTextSelective;
+export const getEpubMetadata = nativeModule.getEpubMetadata;
+
+export const ocrImage = nativeModule.ocrImage;
+export const ocrImagesBatch = nativeModule.ocrImagesBatch;
+export const getOcrLanguages = nativeModule.getOcrLanguages;
+export const getImageOcrStats = nativeModule.getImageOcrStats;
+
+// Vector operations
+export const computeCosineSimilarities = nativeModule.computeCosineSimilarities;
+export const findTopKSimilar = nativeModule.findTopKSimilar;
+export const computeSimilarityMatrix = nativeModule.computeSimilarityMatrix;
+export const normalizeVectors = nativeModule.normalizeVectors;
+export const computeEuclideanDistances = nativeModule.computeEuclideanDistances;
+export const dotProduct = nativeModule.dotProduct;
+export const vectorNorm = nativeModule.vectorNorm;
+export const getVectorStats = nativeModule.getVectorStats;
+export const getVectorStatsBatch = nativeModule.getVectorStatsBatch;
+
+// Indexer functions
+export const parseAndChunkDocument = nativeModule.parseAndChunkDocument;
+export const parseAndChunkDocumentsBatch = nativeModule.parseAndChunkDocumentsBatch;
+export const calculateIndexingStats = nativeModule.calculateIndexingStats;
+
 // Utility functions
 export function isNativeAvailable(): boolean {
   return nativeModule !== null;

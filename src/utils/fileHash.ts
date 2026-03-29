@@ -14,7 +14,7 @@ export async function calculateFileHash(filePath: string): Promise<string> {
  */
 export async function calculateFileHashesParallel(filePaths: string[]): Promise<Map<string, string>> {
   const results = await hashFilesParallel(filePaths);
-  return new Map(results.map(r => [r.path, r.hash!]));
+  return new Map(results.map((r: any) => [r.path, r.hash!]));
 }
 
 /**

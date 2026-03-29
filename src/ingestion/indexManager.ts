@@ -403,14 +403,13 @@ export class IndexManager {
           const allEmbeddings: any[] = [];
 
           console.log(`[BigRAG] Starting embedding of ${allTexts.length} chunks`);
-          console.log(`[BigRAG] Using ${embeddingModels.length} model(s), batch size: ${EMBEDDING_BATCH_SIZE}, concurrency: ${EMBEDDING_CONCURRENCY}`);
+          console.log(`[BigRAG] Batch size: ${EMBEDDING_BATCH_SIZE}, Concurrency: ${EMBEDDING_CONCURRENCY}`);
           console.log(`[BigRAG] Total batches: ${Math.ceil(allTexts.length / EMBEDDING_BATCH_SIZE)}`);
 
           let completedBatches = 0;
           const totalBatches = Math.ceil(allTexts.length / EMBEDDING_BATCH_SIZE);
-          let modelIndex = 0; // Round-robin across models
 
-          // Process batches with controlled concurrency and multi-model distribution
+          // Process batches with controlled concurrency
           const batchQueue: Array<{ batch: string[]; index: number; batchNumber: number }> = [];
           for (let i = 0; i < allTexts.length; i += EMBEDDING_BATCH_SIZE) {
             const batch = allTexts.slice(i, i + EMBEDDING_BATCH_SIZE);
@@ -418,7 +417,7 @@ export class IndexManager {
             batchQueue.push({ batch, index: i, batchNumber });
           }
 
-          // Process batches with concurrency limit and round-robin model selection
+          // Process batches with concurrency limit
           const inFlight = new Map<number, Promise<any>>();
 
           for (const { batch, index, batchNumber } of batchQueue) {
@@ -427,9 +426,8 @@ export class IndexManager {
               await Promise.race(inFlight.values());
             }
 
-            // Select model round-robin
-            const model = embeddingModels[modelIndex % embeddingModels.length];
-            modelIndex++;
+            // Use single model (first in array)
+            const model = embeddingModels[0];
 
             const batchPromise = (async () => {
               let lastError: Error | null = null;

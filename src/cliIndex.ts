@@ -64,8 +64,8 @@ async function main() {
     autoReindex,
     parseDelayMs,
     failureReportPath,
-    embeddingBatchSize: 100,
-    embeddingConcurrency: 5,
+    embeddingBatchSize: 100,      // Optimized for single model
+    embeddingConcurrency: 5,       // Concurrent requests
     onProgress: (progress) => {
       if (progress.status === "scanning") {
         console.log(
