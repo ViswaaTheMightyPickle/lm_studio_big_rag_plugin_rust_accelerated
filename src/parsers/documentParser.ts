@@ -40,7 +40,7 @@ export type DocumentParseResult =
 const MIN_TEXT_LENGTH = 50;
 
 /**
- * Parse PDF using LM Studio parser (best for complex PDFs)
+ * Parse PDF using LM Studio parser (fallback for complex PDFs)
  */
 async function parsePDFLMStudio(filePath: string, client: LMStudioClient): Promise<DocumentParseResult> {
   try {
@@ -78,7 +78,7 @@ async function parsePDFLMStudio(filePath: string, client: LMStudioClient): Promi
 }
 
 /**
- * Parse a document file using Rust native parser with LM Studio fallback for PDFs
+ * Parse a document file using Rust native parser (primary) with LM Studio fallback for PDFs
  */
 export async function parseDocument(
   filePath: string,
@@ -98,24 +98,9 @@ export async function parseDocument(
   }
 
   try {
-    // PDF: Use LM Studio parser first (better for complex PDFs), fallback to Rust
+    // PDF: Use Rust parser first (fast), fallback to LM Studio for complex PDFs
     if (ext === ".pdf") {
-      if (!client) {
-        return {
-          success: false,
-          reason: "pdf.missing-client",
-          details: "LM Studio client required for PDF parsing",
-        };
-      }
-      
-      // Try LM Studio parser first
-      const lmStudioResult = await parsePDFLMStudio(filePath, client);
-      if (lmStudioResult.success) {
-        return lmStudioResult;
-      }
-      
-      // Fallback to Rust parser
-      console.log(`[Parser] LM Studio PDF parsing failed, trying Rust parser for ${fileName}`);
+      // Try Rust parser first (fastest)
       const rustResult = await nativeExtractPdfText(filePath);
       
       if (rustResult.success && rustResult.text.length >= MIN_TEXT_LENGTH) {
@@ -133,10 +118,26 @@ export async function parseDocument(
         };
       }
       
+      // Fallback to LM Studio parser for complex PDFs
+      if (!client) {
+        return {
+          success: false,
+          reason: "pdf.missing-client",
+          details: "LM Studio client required for PDF parsing fallback",
+        };
+      }
+      
+      console.log(`[Parser] Rust PDF extraction failed, trying LM Studio parser for ${fileName}`);
+      const lmStudioResult = await parsePDFLMStudio(filePath, client);
+      
+      if (lmStudioResult.success) {
+        return lmStudioResult;
+      }
+      
       return {
         success: false,
         reason: "pdf.pdfparse-empty",
-        details: rustResult.error || "No text extracted",
+        details: lmStudioResult.details || rustResult.error || "No text extracted",
       };
     }
 
@@ -181,7 +182,7 @@ export async function parseDocument(
       };
     }
 
-    // All other formats: Use Rust parser
+    // All other formats: Use Rust parser (primary)
     const result = await nativeParseDocument(filePath, enableOCR);
 
     if (result.success && result.text) {

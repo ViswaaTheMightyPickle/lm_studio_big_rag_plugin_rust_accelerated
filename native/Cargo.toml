@@ -26,6 +26,7 @@ tiktoken-rs = "0.6"
 
 # PDF parsing
 lopdf = "0.31"
+pdf-extract = "0.8"
 
 # EPUB parsing
 epub = "2.0"
