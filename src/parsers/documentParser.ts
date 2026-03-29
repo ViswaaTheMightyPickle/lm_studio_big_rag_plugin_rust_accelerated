@@ -1,6 +1,6 @@
 import * as path from "path";
 import { type LMStudioClient } from "@lmstudio/sdk";
-import { parseDocument as nativeParseDocument, isSupportedExtension } from "../native";
+import { parseDocument as nativeParseDocument, isSupportedExtension, extractPdfText as nativeExtractPdfText } from "../native";
 
 export interface ParsedDocument {
   text: string;
@@ -37,14 +37,53 @@ export type DocumentParseResult =
   | { success: true; document: ParsedDocument }
   | { success: false; reason: ParseFailureReason; details?: string };
 
+const MIN_TEXT_LENGTH = 50;
+
 /**
- * Parse a document file using Rust native parser
- * All parsing is done in Rust for maximum performance
+ * Parse PDF using LM Studio parser (best for complex PDFs)
+ */
+async function parsePDFLMStudio(filePath: string, client: LMStudioClient): Promise<DocumentParseResult> {
+  try {
+    const fileHandle = await client.files.prepareFile(filePath);
+    const result = await client.files.parseDocument(fileHandle);
+    const text = result.content?.trim() ?? "";
+    
+    if (text.length >= MIN_TEXT_LENGTH) {
+      return {
+        success: true,
+        document: {
+          text,
+          metadata: {
+            filePath,
+            fileName: path.basename(filePath),
+            extension: ".pdf",
+            parsedAt: new Date(),
+          },
+        },
+      };
+    }
+    
+    return {
+      success: false,
+      reason: "pdf.lmstudio-empty",
+      details: `Extracted ${text.length} chars`,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      reason: "pdf.lmstudio-error",
+      details: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+/**
+ * Parse a document file using Rust native parser with LM Studio fallback for PDFs
  */
 export async function parseDocument(
   filePath: string,
   enableOCR: boolean = false,
-  _client?: LMStudioClient,  // Kept for API compatibility
+  client?: LMStudioClient,
 ): Promise<DocumentParseResult> {
   const ext = path.extname(filePath).toLowerCase();
   const fileName = path.basename(filePath);
@@ -59,7 +98,90 @@ export async function parseDocument(
   }
 
   try {
-    // Call Rust native parser
+    // PDF: Use LM Studio parser first (better for complex PDFs), fallback to Rust
+    if (ext === ".pdf") {
+      if (!client) {
+        return {
+          success: false,
+          reason: "pdf.missing-client",
+          details: "LM Studio client required for PDF parsing",
+        };
+      }
+      
+      // Try LM Studio parser first
+      const lmStudioResult = await parsePDFLMStudio(filePath, client);
+      if (lmStudioResult.success) {
+        return lmStudioResult;
+      }
+      
+      // Fallback to Rust parser
+      console.log(`[Parser] LM Studio PDF parsing failed, trying Rust parser for ${fileName}`);
+      const rustResult = await nativeExtractPdfText(filePath);
+      
+      if (rustResult.success && rustResult.text.length >= MIN_TEXT_LENGTH) {
+        return {
+          success: true,
+          document: {
+            text: rustResult.text,
+            metadata: {
+              filePath,
+              fileName,
+              extension: ext,
+              parsedAt: new Date(),
+            },
+          },
+        };
+      }
+      
+      return {
+        success: false,
+        reason: "pdf.pdfparse-empty",
+        details: rustResult.error || "No text extracted",
+      };
+    }
+
+    // Images: Use Rust OCR if enabled
+    if ([".png", ".jpg", ".jpeg", ".gif", ".bmp", ".tiff", ".webp"].includes(ext)) {
+      if (!enableOCR) {
+        return {
+          success: false,
+          reason: "image.ocr-disabled",
+          details: "Enable OCR to parse images",
+        };
+      }
+      
+      const { ocrImage } = await import("../native");
+      const ocrResult = await ocrImage(filePath, {
+        language: "eng",
+        preprocessGrayscale: true,
+        preprocessDeskew: false,
+        enhanceContrast: true,
+        maxImageArea: 50000000,
+      });
+      
+      if (ocrResult.success && ocrResult.text.length >= MIN_TEXT_LENGTH) {
+        return {
+          success: true,
+          document: {
+            text: ocrResult.text,
+            metadata: {
+              filePath,
+              fileName,
+              extension: ext,
+              parsedAt: new Date(),
+            },
+          },
+        };
+      }
+      
+      return {
+        success: false,
+        reason: ocrResult.success ? "image.empty" : "image.error",
+        details: ocrResult.error || "No text extracted from image",
+      };
+    }
+
+    // All other formats: Use Rust parser
     const result = await nativeParseDocument(filePath, enableOCR);
 
     if (result.success && result.text) {

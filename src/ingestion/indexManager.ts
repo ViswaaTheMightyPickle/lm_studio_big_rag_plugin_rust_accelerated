@@ -386,8 +386,20 @@ export class IndexManager {
 
       if (allChunks.length > 0) {
         try {
-          // No need to validate - tokenizer-based chunking already ensures chunks are within limits
-          const safeChunks = allChunks;
+          // Validate chunks are within token limit (2048 max for embedding model)
+          const MAX_EMBEDDING_TOKENS = 2048;
+          const safeChunks = allChunks.filter((c, idx) => {
+            const tokens = c.chunk.tokenEstimate;
+            if (tokens > MAX_EMBEDDING_TOKENS) {
+              console.warn(`[BigRAG] Chunk ${idx} from ${c.doc.file.name} exceeds token limit: ${tokens} tokens (skipping)`);
+              return false;
+            }
+            return true;
+          });
+
+          if (safeChunks.length < allChunks.length) {
+            console.log(`[BigRAG] Filtered ${allChunks.length - safeChunks.length} oversized chunks (${allChunks.length} → ${safeChunks.length})`);
+          }
 
           // Log token statistics from pre-computed values
           const tokenStats = safeChunks.map(c => c.chunk.tokenEstimate);
@@ -395,7 +407,7 @@ export class IndexManager {
           const maxTokens = Math.max(...tokenStats, 0);
           const avgTokens = tokenStats.length > 0 ? Math.round(tokenStats.reduce((a, b) => a + b, 0) / tokenStats.length) : 0;
           console.log(
-            `[Token Stats] Chunks: ${safeChunks.length}, Min: ${minTokens}, Max: ${maxTokens}, Avg: ${avgTokens} tokens (pre-computed)`,
+            `[Token Stats] Chunks: ${safeChunks.length}, Min: ${minTokens}, Max: ${maxTokens}, Avg: ${avgTokens} tokens`,
           );
 
           // Append newline to each chunk to satisfy embedding model's EOS token expectation
