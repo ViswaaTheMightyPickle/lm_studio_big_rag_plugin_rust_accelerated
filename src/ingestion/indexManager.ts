@@ -431,11 +431,39 @@ export class IndexManager {
 
           // Process batches with concurrency limit
           const inFlight = new Map<number, Promise<any>>();
+          let lastSuccessfulBatch = 0;
+
+          // Connection health check - verify LM Studio connection before starting batches
+          console.log(`[Embedding] Verifying connection to LM Studio...`);
+          try {
+            await embeddingModels[0].embed(['test']);
+            console.log(`[Embedding] Connection verified successfully`);
+          } catch (e) {
+            console.warn(`[Embedding] Initial connection check failed, retrying...`);
+            await new Promise(r => setTimeout(r, 2000));
+            await embeddingModels[0].embed(['test']);
+            console.log(`[Embedding] Connection established after retry`);
+          }
 
           for (const { batch, index, batchNumber } of batchQueue) {
             // Wait if we've hit concurrency limit
             while (inFlight.size >= EMBEDDING_CONCURRENCY) {
               await Promise.race(inFlight.values());
+            }
+
+            // Connection health check every 5 batches (lightweight check)
+            if (batchNumber > 1 && batchNumber % 5 === 0) {
+              try {
+                await embeddingModels[0].embed(['health-check']);
+                lastSuccessfulBatch = batchNumber;
+              } catch (e) {
+                console.warn(`[Embedding] Connection health check failed at batch ${batchNumber}, attempting reconnect...`);
+                await new Promise(r => setTimeout(r, 3000));
+                // Retry health check
+                await embeddingModels[0].embed(['health-check']);
+                console.log(`[Embedding] Connection restored after batch ${batchNumber}`);
+                lastSuccessfulBatch = batchNumber;
+              }
             }
 
             // Use single model (first in array)
@@ -477,6 +505,7 @@ export class IndexManager {
             batchPromise.then((result) => {
               allEmbeddings.push(...result);
               completedBatches++;
+              lastSuccessfulBatch = batchNumber;
               inFlight.delete(batchNumber);
 
               if (onProgress) {
