@@ -35,6 +35,12 @@ async function main() {
   const embeddingModelId =
     process.env.BIG_RAG_EMBEDDING_MODEL ??
     "nomic-ai/nomic-embed-text-v1.5-GGUF";
+  const embeddingBatchSize = process.env.BIG_RAG_EMBEDDING_BATCH_SIZE
+    ? Number(process.env.BIG_RAG_EMBEDDING_BATCH_SIZE)
+    : 20;
+  const embeddingConcurrency = process.env.BIG_RAG_EMBEDDING_CONCURRENCY
+    ? Number(process.env.BIG_RAG_EMBEDDING_CONCURRENCY)
+    : 4;
 
   console.log("[BigRAG CLI] Starting indexing");
   console.log(`[BigRAG CLI] Documents dir: ${documentsDir}`);
@@ -64,8 +70,8 @@ async function main() {
     autoReindex,
     parseDelayMs,
     failureReportPath,
-    embeddingBatchSize: 50,      // Smaller batches = faster completion, less timeout risk
-    embeddingConcurrency: 10,    // More parallel requests = better throughput
+    embeddingBatchSize,
+    embeddingConcurrency,
     onProgress: (progress) => {
       if (progress.status === "scanning") {
         console.log(

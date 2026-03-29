@@ -127,6 +127,36 @@ cd native && npm run build
 
 ---
 
+## ⚠️ Network Requirements
+
+**Important:** This plugin requires a **stable, low-latency connection** to LM Studio.
+
+### Supported Configurations
+
+| Configuration | Status | Recommendation |
+|--------------|--------|----------------|
+| **Local** (localhost:1234) | ✅ Recommended | Best performance |
+| **Same LAN** (direct IP) | ✅ Supported | Good performance |
+| **Tailscale/VPN** | ⚠️ Limited | May experience timeouts |
+
+### If Using Tailscale or VPN
+
+The plugin supports embedding over Tailscale, but expect:
+- Slower indexing due to connection retries
+- Occasional timeout errors (auto-recovered)
+- Health checks before every batch
+
+**To optimize for VPN:**
+```bash
+# Use smaller batches and lower concurrency
+export BIG_RAG_EMBEDDING_BATCH_SIZE=20
+export BIG_RAG_EMBEDDING_CONCURRENCY=4
+```
+
+**Recommended:** Run LM Studio and the plugin on the **same machine** or **same LAN** without VPN for best performance.
+
+---
+
 ## 🔧 Configuration
 
 ### Plugin Settings
@@ -144,13 +174,23 @@ cd native && npm run build
 ### Environment Variables
 
 ```bash
-# For CLI usage
+# Required
 export BIG_RAG_DOCS_DIR=/path/to/docs
 export BIG_RAG_DB_DIR=/path/to/vectorstore
+
+# Optional - Tuning
 export BIG_RAG_CHUNK_SIZE=512
 export BIG_RAG_CHUNK_OVERLAP=100
 export BIG_RAG_EMBEDDING_MODEL="nomic-ai/nomic-embed-text-v1.5-GGUF"
+export BIG_RAG_EMBEDDING_BATCH_SIZE=20    # Chunks per embedding request
+export BIG_RAG_EMBEDDING_CONCURRENCY=4    # Parallel embedding requests
+export BIG_RAG_ENABLE_OCR=false
+export BIG_RAG_PARSE_DELAY_MS=500
 ```
+
+**For Tailscale/VPN:** Use `BIG_RAG_EMBEDDING_BATCH_SIZE=20` and `BIG_RAG_EMBEDDING_CONCURRENCY=4` (defaults).
+
+**For local/LAN:** Can increase to `BIG_RAG_EMBEDDING_BATCH_SIZE=50` and `BIG_RAG_EMBEDDING_CONCURRENCY=10` for faster indexing.
 
 ---
 

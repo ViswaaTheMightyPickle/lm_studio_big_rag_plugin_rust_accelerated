@@ -451,8 +451,8 @@ export class IndexManager {
               await Promise.race(inFlight.values());
             }
 
-            // Connection health check every 5 batches (lightweight check)
-            if (batchNumber > 1 && batchNumber % 5 === 0) {
+            // Connection health check before EVERY batch (unstable connections)
+            if (batchNumber > 1) {
               try {
                 await embeddingModels[0].embed(['health-check']);
                 lastSuccessfulBatch = batchNumber;
